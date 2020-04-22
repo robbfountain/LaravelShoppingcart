@@ -2,68 +2,26 @@
 
 namespace Gloudemans\Tests\Shoppingcart;
 
-use Mockery;
-use PHPUnit\Framework\Assert;
 use Gloudemans\Shoppingcart\Cart;
-use Orchestra\Testbench\TestCase;
-use Illuminate\Auth\Events\Logout;
-use Illuminate\Support\Collection;
 use Gloudemans\Shoppingcart\CartItem;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Session\SessionManager;
-use Illuminate\Contracts\Auth\Authenticatable;
+use Gloudemans\Shoppingcart\Exceptions\CartAlreadyStoredException;
+use Gloudemans\Shoppingcart\Exceptions\InvalidRowIDException;
+use Gloudemans\Shoppingcart\Exceptions\UnknownModelException;
 use Gloudemans\Shoppingcart\ShoppingcartServiceProvider;
-use Gloudemans\Tests\Shoppingcart\Fixtures\ProductModel;
 use Gloudemans\Tests\Shoppingcart\Fixtures\BuyableProduct;
+use Gloudemans\Tests\Shoppingcart\Fixtures\ProductModel;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Session\SessionManager;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Event;
+use Mockery;
+use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Assert;
 
 class CartTest extends TestCase
 {
     use CartAssertions;
-
-    /**
-     * Set the package service provider.
-     *
-     * @param \Illuminate\Foundation\Application $app
-     * @return array
-     */
-    protected function getPackageProviders($app)
-    {
-        return [ShoppingcartServiceProvider::class];
-    }
-
-    /**
-     * Define environment setup.
-     *
-     * @param  \Illuminate\Foundation\Application  $app
-     * @return void
-     */
-    protected function getEnvironmentSetUp($app)
-    {
-        $app['config']->set('cart.database.connection', 'testing');
-
-        $app['config']->set('session.driver', 'array');
-
-        $app['config']->set('database.default', 'testing');
-        $app['config']->set('database.connections.testing', [
-            'driver'   => 'sqlite',
-            'database' => ':memory:',
-            'prefix'   => '',
-        ]);
-    }
-
-    /**
-     * Setup the test environment.
-     *
-     * @return void
-     */
-    protected function setUp()
-    {
-        parent::setUp();
-
-        $this->app->afterResolving('migrator', function ($migrator) {
-            $migrator->path(realpath(__DIR__.'/../database/migrations'));
-        });
-    }
 
     /** @test */
     public function it_has_a_default_instance()
@@ -71,6 +29,19 @@ class CartTest extends TestCase
         $cart = $this->getCart();
 
         $this->assertEquals(Cart::DEFAULT_INSTANCE, $cart->currentInstance());
+    }
+
+    /**
+     * Get an instance of the cart.
+     *
+     * @return \Gloudemans\Shoppingcart\Cart
+     */
+    private function getCart()
+    {
+        $session = $this->app->make('session');
+        $events = $this->app->make('events');
+
+        return new Cart($session, $events);
     }
 
     /** @test */
@@ -85,7 +56,7 @@ class CartTest extends TestCase
         $this->assertItemsInCart(1, $cart->instance(Cart::DEFAULT_INSTANCE));
         $this->assertItemsInCart(1, $cart->instance('wishlist'));
     }
-    
+
     /** @test */
     public function it_can_add_an_item()
     {
@@ -182,7 +153,7 @@ class CartTest extends TestCase
 
         $cart->add([
             ['id' => 1, 'name' => 'Test item 1', 'qty' => 1, 'price' => 10.00],
-            ['id' => 2, 'name' => 'Test item 2', 'qty' => 1, 'price' => 10.00]
+            ['id' => 2, 'name' => 'Test item 2', 'qty' => 1, 'price' => 10.00],
         ]);
 
         $this->assertEquals(2, $cart->count());
@@ -212,11 +183,11 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage Please supply a valid identifier.
      */
     public function it_will_validate_the_identifier()
     {
+        $this->expectException(\InvalidArgumentException::class);
+
         $cart = $this->getCart();
 
         $cart->add(null, 'Some title', 1, 10.00);
@@ -224,11 +195,10 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage Please supply a valid name.
      */
     public function it_will_validate_the_name()
     {
+        $this->expectException(\InvalidArgumentException::class);
         $cart = $this->getCart();
 
         $cart->add(1, null, 1, 10.00);
@@ -236,11 +206,10 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage Please supply a valid quantity.
      */
     public function it_will_validate_the_quantity()
     {
+        $this->expectException(\InvalidArgumentException::class);
         $cart = $this->getCart();
 
         $cart->add(1, 'Some title', 'invalid', 10.00);
@@ -248,11 +217,11 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \InvalidArgumentException
-     * @expectedExceptionMessage Please supply a valid price.
      */
     public function it_will_validate_the_price()
     {
+        $this->expectException(\InvalidArgumentException::class);
+
         $cart = $this->getCart();
 
         $cart->add(1, 'Some title', 1, 'invalid');
@@ -340,10 +309,10 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \Gloudemans\Shoppingcart\Exceptions\InvalidRowIDException
      */
     public function it_will_throw_an_exception_if_a_rowid_was_not_found()
     {
+        $this->expectException(InvalidRowIDException::class);
         $cart = $this->getCart();
 
         $cart->add(new BuyableProduct);
@@ -498,7 +467,7 @@ class CartTest extends TestCase
                 'tax' => 2.10,
                 'subtotal' => 10.0,
                 'options' => [],
-            ]
+            ],
         ], $content->toArray());
     }
 
@@ -601,7 +570,7 @@ class CartTest extends TestCase
 
         $cartItem = $cart->get('027c91341fd5cf4d2579b49c4b6a90da');
 
-        $this->assertContains(BuyableProduct::class, Assert::readAttribute($cartItem, 'associatedModel'));
+        $this->assertEquals("Gloudemans\Tests\Shoppingcart\Fixtures\BuyableProduct", $cartItem->associatedModel());
     }
 
     /** @test */
@@ -615,16 +584,16 @@ class CartTest extends TestCase
 
         $cartItem = $cart->get('027c91341fd5cf4d2579b49c4b6a90da');
 
-        $this->assertEquals(ProductModel::class, Assert::readAttribute($cartItem, 'associatedModel'));
+        $this->assertEquals("Gloudemans\Tests\Shoppingcart\Fixtures\ProductModel", $cartItem->associatedModel());
     }
 
     /**
      * @test
-     * @expectedException \Gloudemans\Shoppingcart\Exceptions\UnknownModelException
-     * @expectedExceptionMessage The supplied model SomeModel does not exist.
      */
     public function it_will_throw_an_exception_when_a_non_existing_model_is_being_associated()
     {
+        $this->expectException(UnknownModelException::class);
+        $this->getExpectedExceptionMessage('The supplied model SomeModel does not exist.');
         $cart = $this->getCart();
 
         $cart->add(1, 'Test item', 1, 10.00);
@@ -772,6 +741,20 @@ class CartTest extends TestCase
         $this->assertEquals('6050,00', $cart->total);
     }
 
+    /**
+     * Set the config number format.
+     *
+     * @param int    $decimals
+     * @param string $decimalPoint
+     * @param string $thousandSeperator
+     */
+    private function setConfigFormat($decimals, $decimalPoint, $thousandSeperator)
+    {
+        $this->app['config']->set('cart.format.decimals', $decimals);
+        $this->app['config']->set('cart.format.decimal_point', $decimalPoint);
+        $this->app['config']->set('cart.format.thousand_seperator', $thousandSeperator);
+    }
+
     /** @test */
     public function it_can_return_cartItem_formated_numbers_by_config_values()
     {
@@ -815,11 +798,12 @@ class CartTest extends TestCase
 
     /**
      * @test
-     * @expectedException \Gloudemans\Shoppingcart\Exceptions\CartAlreadyStoredException
-     * @expectedExceptionMessage A cart with identifier 123 was already stored.
      */
     public function it_will_throw_an_exception_when_a_cart_was_already_stored_using_the_specified_identifier()
     {
+        $this->expectException(CartAlreadyStoredException::class);
+        $this->expectExceptionMessage('A cart with identifier 123 was already stored.');
+
         $this->artisan('migrate', [
             '--database' => 'testing',
         ]);
@@ -913,33 +897,53 @@ class CartTest extends TestCase
 
         $user = Mockery::mock(Authenticatable::class);
 
-        event(new Logout($user));
+        event(new Logout('web', $user));
     }
 
     /**
-     * Get an instance of the cart.
+     * Set the package service provider.
      *
-     * @return \Gloudemans\Shoppingcart\Cart
+     * @param \Illuminate\Foundation\Application $app
+     *
+     * @return array
      */
-    private function getCart()
+    protected function getPackageProviders($app)
     {
-        $session = $this->app->make('session');
-        $events = $this->app->make('events');
-
-        return new Cart($session, $events);
+        return [ShoppingcartServiceProvider::class];
     }
 
     /**
-     * Set the config number format.
-     * 
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
+     * Define environment setup.
+     *
+     * @param \Illuminate\Foundation\Application $app
+     *
+     * @return void
      */
-    private function setConfigFormat($decimals, $decimalPoint, $thousandSeperator)
+    protected function getEnvironmentSetUp($app)
     {
-        $this->app['config']->set('cart.format.decimals', $decimals);
-        $this->app['config']->set('cart.format.decimal_point', $decimalPoint);
-        $this->app['config']->set('cart.format.thousand_seperator', $thousandSeperator);
+        $app['config']->set('cart.database.connection', 'testing');
+
+        $app['config']->set('session.driver', 'array');
+
+        $app['config']->set('database.default', 'testing');
+        $app['config']->set('database.connections.testing', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]);
+    }
+
+    /**
+     * Setup the test environment.
+     *
+     * @return void
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->app->afterResolving('migrator', function ($migrator) {
+            $migrator->path(realpath(__DIR__ . '/../database/migrations'));
+        });
     }
 }
