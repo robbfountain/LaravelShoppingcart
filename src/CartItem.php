@@ -2,7 +2,6 @@
 
 namespace Gloudemans\Shoppingcart;
 
-use Illuminate\Support\Arr;
 use Illuminate\Contracts\Support\Arrayable;
 use Gloudemans\Shoppingcart\Contracts\Buyable;
 use Illuminate\Contracts\Support\Jsonable;
@@ -103,16 +102,6 @@ class CartItem implements Arrayable, Jsonable
     public function price($decimals = null, $decimalPoint = null, $thousandSeperator = null)
     {
         return $this->numberFormat($this->price, $decimals, $decimalPoint, $thousandSeperator);
-    }
-
-    /**
-     * Returns the associated model
-     *
-     * @return string|null
-     */
-    public function associatedModel()
-    {
-        return $this->associatedModel;
     }
     
     /**
@@ -217,12 +206,12 @@ class CartItem implements Arrayable, Jsonable
      */
     public function updateFromArray(array $attributes)
     {
-        $this->id       = Arr::get($attributes, 'id', $this->id);
-        $this->qty      = Arr::get($attributes, 'qty', $this->qty);
-        $this->name     = Arr::get($attributes, 'name', $this->name);
-        $this->price    = Arr::get($attributes, 'price', $this->price);
+        $this->id       = array_get($attributes, 'id', $this->id);
+        $this->qty      = array_get($attributes, 'qty', $this->qty);
+        $this->name     = array_get($attributes, 'name', $this->name);
+        $this->price    = array_get($attributes, 'price', $this->price);
         $this->priceTax = $this->price + $this->tax;
-        $this->options  = new CartItemOptions(Arr::get($attributes, 'options', $this->options));
+        $this->options  = new CartItemOptions(array_get($attributes, 'options', $this->options));
 
         $this->rowId = $this->generateRowId($this->id, $this->options->all());
     }
@@ -312,7 +301,7 @@ class CartItem implements Arrayable, Jsonable
      */
     public static function fromArray(array $attributes)
     {
-        $options = Arr::get($attributes, 'options', []);
+        $options = array_get($attributes, 'options', []);
 
         return new self($attributes['id'], $attributes['name'], $attributes['price'], $options);
     }
